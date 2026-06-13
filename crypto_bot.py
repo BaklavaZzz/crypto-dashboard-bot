@@ -1,232 +1,216 @@
-import telebot
-import requests
-from telebot import types
-from PIL import Image, ImageDraw, ImageFont
-import io, math, os
-from datetime import datetime
+import asyncio
+import os
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from playwright.async_api import async_playwright
+import aiohttp
 
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-bot = telebot.TeleBot(TOKEN)
+# ==================== CONFIG ====================
+BOT_TOKEN = "8809560356:AAEjqC8RA_AVevRoOfO_4m-oGwNke4tOMBo"   # ← Replace with your token from @BotFather
+# ===============================================
 
-COINS = [
-    "bitcoin", "ethereum", "solana",
-    "the-open-network", "litecoin", "monero",
-    "ripple", "binancecoin", "tron",
-]
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
-CARD_META = {
-    "bitcoin":          {"name":"Bitcoin",  "sym":"BTC", "icon_bg":(230,135,0),   "glow":(180,90,5),   "grad_a":(95,50,5),   "grad_b":(18,10,2),   "price_col":(255,175,50)},
-    "ethereum":         {"name":"Ethereum", "sym":"ETH", "icon_bg":(90,120,220),  "glow":(55,80,190),  "grad_a":(35,48,125), "grad_b":(8,12,32),   "price_col":(120,155,255)},
-    "solana":           {"name":"Solana",   "sym":"SOL", "icon_bg":(120,70,215),  "glow":(80,35,175),  "grad_a":(45,20,105), "grad_b":(8,6,25),    "price_col":(165,115,255)},
-    "the-open-network": {"name":"Toncoin",  "sym":"TON", "icon_bg":(35,125,215),  "glow":(18,75,175),  "grad_a":(14,48,120), "grad_b":(5,12,35),   "price_col":(75,165,255)},
-    "litecoin":         {"name":"Litecoin", "sym":"LTC", "icon_bg":(70,115,200),  "glow":(38,75,165),  "grad_a":(25,48,110), "grad_b":(6,12,32),   "price_col":(115,155,240)},
-    "monero":           {"name":"Monero",   "sym":"XMR", "icon_bg":(215,95,25),   "glow":(175,55,8),   "grad_a":(100,32,5),  "grad_b":(15,6,2),    "price_col":(255,135,55)},
-    "ripple":           {"name":"XRP",      "sym":"XRP", "icon_bg":(75,85,108),   "glow":(38,46,66),   "grad_a":(22,26,38),  "grad_b":(6,8,14),    "price_col":(155,165,188)},
-    "binancecoin":      {"name":"BNB",      "sym":"BNB", "icon_bg":(205,160,15),  "glow":(155,115,6),  "grad_a":(90,62,3),   "grad_b":(15,11,1),   "price_col":(255,205,55)},
-    "tron":             {"name":"Tron",     "sym":"TRX", "icon_bg":(215,25,45),   "glow":(175,8,28),   "grad_a":(100,5,14),  "grad_b":(15,2,5),    "price_col":(255,85,95)},
-}
+# CoinGecko coin IDs
+COIN_IDS = "bitcoin,ethereum,solana,the-open-network,litecoin,monero,ripple,binancecoin,tron"
 
-LOGO_URLS = {
-    "bitcoin":          "https://assets.coingecko.com/coins/images/1/large/bitcoin.png",
-    "ethereum":         "https://assets.coingecko.com/coins/images/279/large/ethereum.png",
-    "solana":           "https://assets.coingecko.com/coins/images/4128/large/solana.png",
-    "the-open-network": "https://assets.coingecko.com/coins/images/17980/large/ton_symbol.png",
-    "litecoin":         "https://assets.coingecko.com/coins/images/2/large/litecoin.png",
-    "monero":           "https://assets.coingecko.com/coins/images/69/large/monero_logo.png",
-    "ripple":           "https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png",
-    "binancecoin":      "https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png",
-    "tron":             "https://assets.coingecko.com/coins/images/1094/large/tron-logo.png",
-}
+# Full HTML (Liquid Glass style - matches the AI image)
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto • Liquid Glass</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap');
+  body { font-family: 'Inter', system_ui, sans-serif; }
+  .glass {
+    background: rgba(20, 20, 30, 0.55);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(255,255,255,0.18);
+    box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5),
+                inset 0 1px 0 rgba(255,255,255,0.25),
+                inset 0 -1px 0 rgba(0,0,0,0.4);
+  }
+  .price { font-family: 'Space Grotesk', system_ui, sans-serif; font-feature-settings: "tnum"; }
+  .cosmic-bg { background: radial-gradient(circle at center, #0f0f17 0%, #0a0a0f 70%); }
+</style>
+</head>
+<body class="cosmic-bg text-white min-h-screen flex items-center justify-center p-8">
+  <div class="max-w-[1080px] w-full">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      
+      <!-- Bitcoin -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#F7931A] flex items-center justify-center text-3xl shadow-inner">₿</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Bitcoin</div><div class="text-white/50 text-sm -mt-1">BTC</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{BTC_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{BTC_CHANGE}}</div>
+      </div>
 
-# This will hold the real logos in memory
-LOGO_CACHE = {}
+      <!-- Ethereum -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#627EEA] flex items-center justify-center text-3xl">Ξ</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Ethereum</div><div class="text-white/50 text-sm -mt-1">ETH</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{ETH_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{ETH_CHANGE}}</div>
+      </div>
 
-BG         = (6, 8, 12)
-TEXT_WHITE = (255, 255, 255)
-TEXT_DIM   = (155, 160, 175)
-GREEN      = (35, 225, 135)
-RED        = (255, 75, 75)
+      <!-- Solana -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#9945FF] flex items-center justify-center"><span class="text-white text-3xl font-bold">S</span></div>
+          <div><div class="font-semibold text-2xl tracking-tight">Solana</div><div class="text-white/50 text-sm -mt-1">SOL</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{SOL_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{SOL_CHANGE}}</div>
+      </div>
 
-POPPINS  = "/usr/share/fonts/truetype/google-fonts/Poppins-{}.ttf"
-DEJAVU_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+      <!-- Toncoin -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#0098EA] flex items-center justify-center text-white text-3xl">💎</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Toncoin</div><div class="text-white/50 text-sm -mt-1">TON</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{TON_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{TON_CHANGE}}</div>
+      </div>
 
+      <!-- Litecoin -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#345D9D] flex items-center justify-center text-white text-3xl">Ł</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Litecoin</div><div class="text-white/50 text-sm -mt-1">LTC</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{LTC_PRICE}}</div>
+        <div class="text-emerald-400 text-lg font-medium mt-1">{{LTC_CHANGE}}</div>
+      </div>
 
-def load_logos():
-    """Download all real logos once into memory"""
-    global LOGO_CACHE
-    print("Downloading real crypto logos...")
-    for coin_id in COINS:
-        try:
-            r = requests.get(LOGO_URLS[coin_id], timeout=15)
-            if r.status_code == 200:
-                logo = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                LOGO_CACHE[coin_id] = logo
-                print(f"  ✓ Loaded {coin_id}")
-            else:
-                LOGO_CACHE[coin_id] = None
-        except Exception as e:
-            print(f"  ✗ Failed to load {coin_id}")
-            LOGO_CACHE[coin_id] = None
-    print("Logos ready!")
+      <!-- Monero -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#FF6600] flex items-center justify-center text-white text-3xl font-bold">M</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Monero</div><div class="text-white/50 text-sm -mt-1">XMR</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{XMR_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{XMR_CHANGE}}</div>
+      </div>
 
+      <!-- XRP -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#23292F] flex items-center justify-center text-white text-3xl">X</div>
+          <div><div class="font-semibold text-2xl tracking-tight">XRP</div><div class="text-white/50 text-sm -mt-1">XRP</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{XRP_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{XRP_CHANGE}}</div>
+      </div>
 
-def get_crypto_data():
-    try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
+      <!-- BNB -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#F3BA2F] flex items-center justify-center text-black text-3xl font-bold">B</div>
+          <div><div class="font-semibold text-2xl tracking-tight">BNB</div><div class="text-white/50 text-sm -mt-1">BNB</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{BNB_PRICE}}</div>
+        <div class="text-red-400 text-lg font-medium mt-1">{{BNB_CHANGE}}</div>
+      </div>
+
+      <!-- Tron -->
+      <div class="glass rounded-[28px] p-7">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-11 h-11 rounded-2xl bg-[#EF0027] flex items-center justify-center text-white text-3xl">T</div>
+          <div><div class="font-semibold text-2xl tracking-tight">Tron</div><div class="text-white/50 text-sm -mt-1">TRX</div></div>
+        </div>
+        <div class="price text-[42px] font-semibold tracking-[-2.5px] leading-none">{{TRX_PRICE}}</div>
+        <div class="text-emerald-400 text-lg font-medium mt-1">{{TRX_CHANGE}}</div>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>"""
+
+def format_change(change: float) -> str:
+    if change is None:
+        return "0.00%"
+    sign = "+" if change >= 0 else ""
+    color = "emerald" if change >= 0 else "red"
+    return f'<span class="text-{color}-400">{sign}{change:.2f}%</span>'
+
+@dp.message(Command("start", "prices", "crypto"))
+async def send_crypto_image(message: types.Message):
+    await message.answer("⏳ Generating latest Liquid Glass image with real prices...")
+
+    # Fetch live prices from CoinGecko
+    async with aiohttp.ClientSession() as session:
+        url = "https://api.coingecko.com/api/v3/simple/price"
         params = {
-            "vs_currency": "usd",
-            "ids": ",".join(COINS),
-            "order": "market_cap_desc",
-            "per_page": 50,
-            "page": 1,
-            "sparkline": False,
-            "price_change_percentage": "24h",
+            "ids": COIN_IDS,
+            "vs_currencies": "usd",
+            "include_24hr_change": "true"
         }
-        r = requests.get(url, params=params, timeout=15)
-        r.raise_for_status()
-        return {c["id"]: c for c in r.json()}
-    except:
-        return None
+        async with session.get(url, params=params) as resp:
+            data = await resp.json()
 
+    # Prepare replacements
+    replacements = {
+        "{{BTC_PRICE}}": f"${data['bitcoin']['usd']:,.2f}",
+        "{{ETH_PRICE}}": f"${data['ethereum']['usd']:,.2f}",
+        "{{SOL_PRICE}}": f"${data['solana']['usd']:,.2f}",
+        "{{TON_PRICE}}": f"${data['the-open-network']['usd']:,.2f}",
+        "{{LTC_PRICE}}": f"${data['litecoin']['usd']:,.2f}",
+        "{{XMR_PRICE}}": f"${data['monero']['usd']:,.2f}",
+        "{{XRP_PRICE}}": f"${data['ripple']['usd']:,.2f}",
+        "{{BNB_PRICE}}": f"${data['binancecoin']['usd']:,.2f}",
+        "{{TRX_PRICE}}": f"${data['tron']['usd']:.3f}",
+        
+        "{{BTC_CHANGE}}": format_change(data['bitcoin'].get('usd_24h_change')),
+        "{{ETH_CHANGE}}": format_change(data['ethereum'].get('usd_24h_change')),
+        "{{SOL_CHANGE}}": format_change(data['solana'].get('usd_24h_change')),
+        "{{TON_CHANGE}}": format_change(data['the-open-network'].get('usd_24h_change')),
+        "{{LTC_CHANGE}}": format_change(data['litecoin'].get('usd_24h_change')),
+        "{{XMR_CHANGE}}": format_change(data['monero'].get('usd_24h_change')),
+        "{{XRP_CHANGE}}": format_change(data['ripple'].get('usd_24h_change')),
+        "{{BNB_CHANGE}}": format_change(data['binancecoin'].get('usd_24h_change')),
+        "{{TRX_CHANGE}}": format_change(data['tron'].get('usd_24h_change')),
+    }
 
-def pfont(weight, size):
-    try:
-        return ImageFont.truetype(POPPINS.format(weight), size)
-    except:
-        return ImageFont.truetype(DEJAVU_B, size)
+    html_content = HTML_TEMPLATE
+    for placeholder, value in replacements.items():
+        html_content = html_content.replace(placeholder, value)
 
+    # Render HTML to image using Playwright
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(viewport={"width": 1200, "height": 900})
+        await page.set_content(html_content, wait_until="networkidle")
+        await page.wait_for_timeout(600)
+        
+        screenshot_path = "crypto_liquid_glass.png"
+        await page.screenshot(path=screenshot_path, full_page=True, quality=95)
+        await browser.close()
 
-def gradient_rect(img, x0, y0, x1, y1, top, bot, radius=22):
-    h = y1 - y0
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(overlay)
-    for i in range(h):
-        t = i / max(h - 1, 1)
-        c = tuple(int(a + (b - a) * t) for a, b in zip(top, bot))
-        d.line([(x0, y0 + i), (x1, y0 + i)], fill=c + (255,))
-    mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=255)
-    img.paste(overlay.convert("RGB"), mask=mask)
+    # Send the image to user
+    await message.answer_photo(
+        types.FSInputFile(screenshot_path),
+        caption="🚀 Live Crypto Prices • Liquid Glass Theme"
+    )
+    
+    # Clean up
+    if os.path.exists(screenshot_path):
+        os.remove(screenshot_path)
 
+async def main():
+    print("✅ Bot is running... Send /prices to get the image")
+    await dp.start_polling(bot)
 
-def draw_glow(img, cx, cy, r, color):
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    d = ImageDraw.Draw(overlay)
-    for i in range(36, 0, -1):
-        alpha = int(55 * (i / 36) ** 0.65)
-        ri = int(r * i / 36)
-        d.ellipse([cx-ri, cy-ri, cx+ri, cy+ri], fill=color + (alpha,))
-    img.paste(overlay, mask=overlay.split()[3])
-
-
-def fmt_price(p):
-    if p is None: return "$—"
-    if p >= 1000: return f"${p:,.2f}"
-    if p >= 1:    return f"${p:.2f}"
-    return f"${p:.4f}"
-
-
-def generate_dashboard_image(data):
-    if not data: return None
-
-    COLS, CARD_W, CARD_H = 3, 370, 232
-    GAP_X, GAP_Y, PAD = 20, 18, 26
-    ROWS = math.ceil(len(COINS) / COLS)
-
-    W = PAD * 2 + COLS * CARD_W + (COLS-1) * GAP_X
-    H = PAD * 2 + ROWS * CARD_H + (ROWS-1) * GAP_Y
-
-    img = Image.new("RGB", (W, H), BG)
-
-    f_name  = pfont("Bold", 30)
-    f_sym   = pfont("Regular", 17)
-    f_price = pfont("Bold", 48)
-    f_chg   = pfont("Bold", 18)
-
-    for idx, coin_id in enumerate(COINS):
-        meta = CARD_META[coin_id]
-        coin = data.get(coin_id, {})
-        col = idx % COLS
-        row = idx // COLS
-
-        x = PAD + col * (CARD_W + GAP_X)
-        y = PAD + row * (CARD_H + GAP_Y)
-
-        draw_glow(img, x + CARD_W//2, y + CARD_H//2, CARD_W//2 + 8, meta["glow"])
-        gradient_rect(img, x, y, x + CARD_W, y + CARD_H, meta["grad_a"], meta["grad_b"], radius=22)
-
-        draw = ImageDraw.Draw(img, "RGBA")
-        draw.rounded_rectangle([x, y, x+CARD_W, y+CARD_H], radius=22, outline=(255,255,255,20), width=1)
-
-        # === REAL LOGO FROM LINK (in memory) ===
-        logo = LOGO_CACHE.get(coin_id)
-        icx, icy = x + 48, y + 52
-        logo_size = 58
-
-        if logo:
-            logo_resized = logo.resize((logo_size, logo_size), Image.LANCZOS)
-            mask = Image.new("L", (logo_size, logo_size), 0)
-            ImageDraw.Draw(mask).ellipse((0, 0, logo_size-1, logo_size-1), fill=255)
-            logo_resized.putalpha(mask)
-            img.paste(logo_resized, (icx - logo_size//2, icy - logo_size//2), logo_resized)
-        else:
-            # Fallback colored circle if logo failed to load
-            draw.ellipse([icx-30, icy-30, icx+30, icy+30], fill=meta["icon_bg"])
-
-        # Name + Ticker
-        draw.text((x + 95, y + 28), meta["name"], font=f_name, fill=TEXT_WHITE)
-        draw.text((x + 95, y + 62), meta["sym"], font=f_sym, fill=TEXT_DIM)
-
-        # Price
-        draw.text((x + 20, y + 108), fmt_price(coin.get("current_price")), font=f_price, fill=meta["price_col"])
-
-        # Change badge
-        chg = coin.get("price_change_percentage_24h") or 0
-        up = chg >= 0
-        color = GREEN if up else RED
-        arrow = "▲" if up else "▼"
-        text = f"{arrow} +{chg:.2f}%" if up else f"{arrow} {chg:.2f}%"
-
-        badge_color = (0, 95, 55, 115) if up else (130, 25, 25, 115)
-        bbox = draw.textbbox((0,0), text, font=f_chg)
-        tw = bbox[2] - bbox[0]
-        bx, by = x + 18, y + CARD_H - 44
-        draw.rounded_rectangle([bx-6, by-3, bx + tw + 9, by + 26], radius=8, fill=badge_color)
-        draw.text((bx, by), text, font=f_chg, fill=color)
-
-    buf = io.BytesIO()
-    img.save(buf, "PNG", optimize=True)
-    buf.seek(0)
-    return buf
-
-
-# ── Bot handlers ──
-def refresh_button():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🔄 Refresh", callback_data="refresh"))
-    return markup
-
-def send_dashboard(chat_id, call=None):
-    if call:
-        bot.answer_callback_query(call.id, "Updating prices...")
-    data = get_crypto_data()
-    img = generate_dashboard_image(data)
-    if not img:
-        bot.send_message(chat_id, "Error loading prices.")
-        return
-    caption = f"📊 Crypto Dashboard • {datetime.now().strftime('%H:%M UTC')}"
-    bot.send_photo(chat_id, img, caption=caption, reply_markup=refresh_button())
-
-@bot.message_handler(commands=["start", "prices"])
-def start(message):
-    send_dashboard(message.chat.id)
-
-@bot.callback_query_handler(func=lambda c: c.data == "refresh")
-def refresh(call):
-    send_dashboard(call.message.chat.id, call)
-
-
-# ====================== START HERE ======================
-print("Starting bot with real logos from links...")
-load_logos()          # ← This downloads the real logos once
-bot.infinity_polling()
+if __name__ == "__main__":
+    asyncio.run(main())
