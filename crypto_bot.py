@@ -8,9 +8,6 @@ from datetime import datetime
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# ─────────────────────────────────────────────
-#  CONFIG
-# ─────────────────────────────────────────────
 COINS = [
     "bitcoin", "ethereum", "solana",
     "the-open-network", "litecoin", "monero",
@@ -18,15 +15,15 @@ COINS = [
 ]
 
 CARD_META = {
-    "bitcoin":          {"name":"Bitcoin",  "sym":"BTC", "icon":"₿",   "icon_bg":(230,135,0),   "glow":(180,90,5),   "grad_a":(95,50,5),   "grad_b":(18,10,2),   "price_col":(255,175,50)},
-    "ethereum":         {"name":"Ethereum", "sym":"ETH", "icon":"Ξ",   "icon_bg":(90,120,220),  "glow":(55,80,190),  "grad_a":(35,48,125), "grad_b":(8,12,32),   "price_col":(120,155,255)},
-    "solana":           {"name":"Solana",   "sym":"SOL", "icon":"◎",   "icon_bg":(120,70,215),  "glow":(80,35,175),  "grad_a":(45,20,105), "grad_b":(8,6,25),    "price_col":(165,115,255)},
-    "the-open-network": {"name":"Toncoin",  "sym":"TON", "icon":"TON", "icon_bg":(35,125,215),  "glow":(18,75,175),  "grad_a":(14,48,120), "grad_b":(5,12,35),   "price_col":(75,165,255)},
-    "litecoin":         {"name":"Litecoin", "sym":"LTC", "icon":"Ł",   "icon_bg":(70,115,200),  "glow":(38,75,165),  "grad_a":(25,48,110), "grad_b":(6,12,32),   "price_col":(115,155,240)},
-    "monero":           {"name":"Monero",   "sym":"XMR", "icon":"ɱ",   "icon_bg":(215,95,25),   "glow":(175,55,8),   "grad_a":(100,32,5),  "grad_b":(15,6,2),    "price_col":(255,135,55)},
-    "ripple":           {"name":"XRP",      "sym":"XRP", "icon":"✕",   "icon_bg":(75,85,108),   "glow":(38,46,66),   "grad_a":(22,26,38),  "grad_b":(6,8,14),    "price_col":(155,165,188)},
-    "binancecoin":      {"name":"BNB",      "sym":"BNB", "icon":"BNB", "icon_bg":(205,160,15),  "glow":(155,115,6),  "grad_a":(90,62,3),   "grad_b":(15,11,1),   "price_col":(255,205,55)},
-    "tron":             {"name":"Tron",     "sym":"TRX", "icon":"TRX", "icon_bg":(215,25,45),   "glow":(175,8,28),   "grad_a":(100,5,14),  "grad_b":(15,2,5),    "price_col":(255,85,95)},
+    "bitcoin":          {"name":"Bitcoin",  "sym":"BTC", "icon_bg":(230,135,0),   "glow":(180,90,5),   "grad_a":(95,50,5),   "grad_b":(18,10,2),   "price_col":(255,175,50)},
+    "ethereum":         {"name":"Ethereum", "sym":"ETH", "icon_bg":(90,120,220),  "glow":(55,80,190),  "grad_a":(35,48,125), "grad_b":(8,12,32),   "price_col":(120,155,255)},
+    "solana":           {"name":"Solana",   "sym":"SOL", "icon_bg":(120,70,215),  "glow":(80,35,175),  "grad_a":(45,20,105), "grad_b":(8,6,25),    "price_col":(165,115,255)},
+    "the-open-network": {"name":"Toncoin",  "sym":"TON", "icon_bg":(35,125,215),  "glow":(18,75,175),  "grad_a":(14,48,120), "grad_b":(5,12,35),   "price_col":(75,165,255)},
+    "litecoin":         {"name":"Litecoin", "sym":"LTC", "icon_bg":(70,115,200),  "glow":(38,75,165),  "grad_a":(25,48,110), "grad_b":(6,12,32),   "price_col":(115,155,240)},
+    "monero":           {"name":"Monero",   "sym":"XMR", "icon_bg":(215,95,25),   "glow":(175,55,8),   "grad_a":(100,32,5),  "grad_b":(15,6,2),    "price_col":(255,135,55)},
+    "ripple":           {"name":"XRP",      "sym":"XRP", "icon_bg":(75,85,108),   "glow":(38,46,66),   "grad_a":(22,26,38),  "grad_b":(6,8,14),    "price_col":(155,165,188)},
+    "binancecoin":      {"name":"BNB",      "sym":"BNB", "icon_bg":(205,160,15),  "glow":(155,115,6),  "grad_a":(90,62,3),   "grad_b":(15,11,1),   "price_col":(255,205,55)},
+    "tron":             {"name":"Tron",     "sym":"TRX", "icon_bg":(215,25,45),   "glow":(175,8,28),   "grad_a":(100,5,14),  "grad_b":(15,2,5),    "price_col":(255,85,95)},
 }
 
 LOGO_URLS = {
@@ -41,6 +38,9 @@ LOGO_URLS = {
     "tron":             "https://assets.coingecko.com/coins/images/1094/large/tron-logo.png",
 }
 
+# This will hold the real logos in memory
+LOGO_CACHE = {}
+
 BG         = (6, 8, 12)
 TEXT_WHITE = (255, 255, 255)
 TEXT_DIM   = (155, 160, 175)
@@ -51,37 +51,23 @@ POPPINS  = "/usr/share/fonts/truetype/google-fonts/Poppins-{}.ttf"
 DEJAVU_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
-def get_logo(coin_id):
-    """Download logo (works even if can't save to disk on GitHub/deploy)"""
-    path = f"icons/{coin_id}.png"
-    
-    # Try load from disk first
-    if os.path.exists(path):
+def load_logos():
+    """Download all real logos once into memory"""
+    global LOGO_CACHE
+    print("Downloading real crypto logos...")
+    for coin_id in COINS:
         try:
-            return Image.open(path).convert("RGBA")
-        except:
-            pass
-
-    # Download
-    try:
-        r = requests.get(LOGO_URLS[coin_id], timeout=15)
-        if r.status_code == 200:
-            logo_bytes = r.content
-            logo = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
-            
-            # Try to save for next time (only if possible)
-            try:
-                os.makedirs("icons", exist_ok=True)
-                with open(path, "wb") as f:
-                    f.write(logo_bytes)
-            except:
-                pass  # Can't write (GitHub/deploy) → still works from memory
-            
-            return logo
-    except:
-        pass
-    
-    return None
+            r = requests.get(LOGO_URLS[coin_id], timeout=15)
+            if r.status_code == 200:
+                logo = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                LOGO_CACHE[coin_id] = logo
+                print(f"  ✓ Loaded {coin_id}")
+            else:
+                LOGO_CACHE[coin_id] = None
+        except Exception as e:
+            print(f"  ✗ Failed to load {coin_id}")
+            LOGO_CACHE[coin_id] = None
+    print("Logos ready!")
 
 
 def get_crypto_data():
@@ -156,7 +142,6 @@ def generate_dashboard_image(data):
     f_sym   = pfont("Regular", 17)
     f_price = pfont("Bold", 48)
     f_chg   = pfont("Bold", 18)
-    f_fallback = pfont("Bold", 22)
 
     for idx, coin_id in enumerate(COINS):
         meta = CARD_META[coin_id]
@@ -173,22 +158,20 @@ def generate_dashboard_image(data):
         draw = ImageDraw.Draw(img, "RGBA")
         draw.rounded_rectangle([x, y, x+CARD_W, y+CARD_H], radius=22, outline=(255,255,255,20), width=1)
 
-        # === REAL LOGO or FALLBACK ===
-        logo = get_logo(coin_id)
+        # === REAL LOGO FROM LINK (in memory) ===
+        logo = LOGO_CACHE.get(coin_id)
         icx, icy = x + 48, y + 52
         logo_size = 58
 
         if logo:
-            logo = logo.resize((logo_size, logo_size), Image.LANCZOS)
+            logo_resized = logo.resize((logo_size, logo_size), Image.LANCZOS)
             mask = Image.new("L", (logo_size, logo_size), 0)
             ImageDraw.Draw(mask).ellipse((0, 0, logo_size-1, logo_size-1), fill=255)
-            logo.putalpha(mask)
-            img.paste(logo, (icx - logo_size//2, icy - logo_size//2), logo)
+            logo_resized.putalpha(mask)
+            img.paste(logo_resized, (icx - logo_size//2, icy - logo_size//2), logo_resized)
         else:
-            # Fallback nice circle + symbol
-            draw.ellipse([icx-32, icy-32, icx+32, icy+32], fill=meta["icon_bg"])
-            draw.ellipse([icx-32, icy-32, icx+32, icy+32], outline=(255,255,255,40), width=2)
-            draw.text((icx, icy), meta["icon"], font=f_fallback, fill=(255,255,255), anchor="mm")
+            # Fallback colored circle if logo failed to load
+            draw.ellipse([icx-30, icy-30, icx+30, icy+30], fill=meta["icon_bg"])
 
         # Name + Ticker
         draw.text((x + 95, y + 28), meta["name"], font=f_name, fill=TEXT_WHITE)
@@ -242,5 +225,8 @@ def start(message):
 def refresh(call):
     send_dashboard(call.message.chat.id, call)
 
-print("🚀 Bot running (GitHub/deploy friendly)...")
+
+# ====================== START HERE ======================
+print("Starting bot with real logos from links...")
+load_logos()          # ← This downloads the real logos once
 bot.infinity_polling()
