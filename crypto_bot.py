@@ -4,6 +4,7 @@ from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 import io
 import os
+from datetime import datetime
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
@@ -30,30 +31,34 @@ def generate_dashboard_image(data):
     if not data:
         return None
 
-    width, height = 1200, 1700
-    img = Image.new('RGB', (width, height), '#0D1117')
+    width, height = 1200, 1750
+    img = Image.new('RGB', (width, height), '#0A0C10')
     draw = ImageDraw.Draw(img)
 
     try:
-        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 68)
-        font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
-        font_price = ImageFont.truetype("DejaVuSans-Bold.ttf", 46)
-        font_change = ImageFont.truetype("DejaVuSans.ttf", 30)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 26)
+        font_title = ImageFont.truetype("DejaVuSans-Bold.ttf", 72)
+        font_subtitle = ImageFont.truetype("DejaVuSans.ttf", 32)
+        font_name = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        font_price = ImageFont.truetype("DejaVuSans-Bold.ttf", 52)
+        font_change = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 28)
     except:
         font_title = ImageFont.load_default()
+        font_subtitle = ImageFont.load_default()
         font_name = ImageFont.load_default()
         font_price = ImageFont.load_default()
         font_change = ImageFont.load_default()
         font_small = ImageFont.load_default()
 
-    draw.text((width//2, 55), "Crypto Dashboard", font=font_title, fill='white', anchor='mt')
-    draw.text((width//2, 130), "Live Prices • 24h Change", font=font_small, fill='#8B949E', anchor='mt')
+    # === Header ===
+    draw.text((width//2, 50), "Crypto Dashboard", font=font_title, fill='#FFFFFF', anchor='mt')
+    draw.text((width//2, 135), "Live Prices • 24h Change", font=font_subtitle, fill='#8B949E', anchor='mt')
 
-    card_w, card_h = 360, 240
-    start_y = 200
-    gap_x, gap_y = 30, 25
-    margin_x = 40
+    # === Cards ===
+    card_w, card_h = 365, 255
+    start_y = 210
+    gap_x, gap_y = 28, 22
+    margin_x = 38
 
     coin_dict = {c['id']: c for c in data}
     order = ['bitcoin', 'ethereum', 'solana', 'the-open-network',
@@ -62,7 +67,7 @@ def generate_dashboard_image(data):
     card_colors = {
         'bitcoin': '#C47E3A', 'ethereum': '#627EEA', 'solana': '#00D4FF',
         'the-open-network': '#0099FF', 'litecoin': '#345D9D',
-        'monero': '#FF6B00', 'ripple': '#1E252F', 'binancecoin': '#F0B90B',
+        'monero': '#FF6B00', 'ripple': '#23292F', 'binancecoin': '#F0B90B',
         'tron': '#EF0027'
     }
 
@@ -83,29 +88,42 @@ def generate_dashboard_image(data):
         y = start_y + row * (card_h + gap_y)
         color = card_colors.get(coin_id, '#333333')
 
-        draw.rounded_rectangle([x+5, y+5, x+card_w+5, y+card_h+5], radius=28, fill='#000000')
-        draw.rounded_rectangle([x, y, x+card_w, y+card_h], radius=28, fill=color)
+        # Shadow
+        draw.rounded_rectangle([x+6, y+6, x+card_w+6, y+card_h+6], radius=30, fill='#000000')
+        # Card
+        draw.rounded_rectangle([x, y, x+card_w, y+card_h], radius=30, fill=color)
 
-        cx, cy = x + 55, y + 55
-        draw.ellipse([cx-38, cy-38, cx+38, cy+38], fill='white')
+        # Icon circle with border
+        cx, cy = x + 58, y + 58
+        draw.ellipse([cx-42, cy-42, cx+42, cy+42], fill='#FFFFFF')
+        draw.ellipse([cx-38, cy-38, cx+38, cy+38], outline=color, width=4)
         draw.text((cx, cy), icons.get(coin_id, '🪙'), font=font_name, fill=color, anchor='mm')
 
-        draw.text((x + 105, y + 30), coin['name'], font=font_name, fill='white')
-        draw.text((x + 105, y + 70), f"({coin['symbol'].upper()})", font=font_small, fill='#E0E0E0')
+        # Name
+        draw.text((x + 110, y + 32), coin['name'], font=font_name, fill='#FFFFFF')
+        draw.text((x + 110, y + 75), f"({coin['symbol'].upper()})", font=font_small, fill='#E0E0E0')
 
+        # Price
         price = coin['current_price']
         price_str = f"${price:,.2f}" if price >= 1 else f"${price:.4f}"
-        draw.text((x + 30, y + 125), price_str, font=font_price, fill='white')
+        draw.text((x + 35, y + 130), price_str, font=font_price, fill='#FFFFFF')
 
+        # 24h Change
         change = coin.get('price_change_percentage_24h', 0) or 0
         if change >= 0:
-            ch_color, ch_text = '#00FF9F', f"+{change:.2f}%"
+            ch_color = '#00FF9F'
+            ch_text = f"+{change:.2f}%"
         else:
-            ch_color, ch_text = '#FF4757', f"{change:.2f}%"
-        draw.text((x + 30, y + 185), ch_text, font=font_change, fill=ch_color)
+            ch_color = '#FF4757'
+            ch_text = f"{change:.2f}%"
+        draw.text((x + 35, y + 195), ch_text, font=font_change, fill=ch_color)
 
-    draw.text((width//2, height - 55), "Live via CoinGecko • Pull to refresh", 
+    # === Footer ===
+    now = datetime.now().strftime("%H:%M")
+    draw.text((width//2, height - 70), f"Updated just now • {now}", 
               font=font_small, fill='#8B949E', anchor='ms')
+    draw.text((width//2, height - 35), "Powered by CoinGecko", 
+              font=font_small, fill='#6E7681', anchor='ms')
 
     buffer = io.BytesIO()
     img.save(buffer, format='PNG')
@@ -116,18 +134,19 @@ def send_dashboard(chat_id):
     data = get_crypto_data()
     img = generate_dashboard_image(data)
     if not img:
-        bot.send_message(chat_id, "❌ Could not load prices. Try again.")
+        bot.send_message(chat_id, "❌ Could not load prices right now.")
         return
 
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="refresh"))
 
-    bot.send_photo(chat_id, img, caption="📊 Crypto Dashboard • Live", reply_markup=markup)
+    bot.send_photo(chat_id, img, caption="📊 Crypto Dashboard", reply_markup=markup)
 
 @bot.message_handler(commands=['start', 'help'])
 def start(message):
     bot.send_message(message.chat.id,
-        "👋 Welcome!\n\nThis bot sends a beautiful crypto dashboard image.\nUse /prices",
+        "👋 Welcome to your beautiful Crypto Dashboard!\n\n"
+        "Send /prices to see the live image.",
         reply_markup=types.InlineKeyboardMarkup().add(
             types.InlineKeyboardButton("📊 Show Dashboard", callback_data="show")
         ))
@@ -142,5 +161,5 @@ def callback(call):
     bot.answer_callback_query(call.id)
 
 if __name__ == "__main__":
-    print("🚀 Crypto Image Dashboard Bot running...")
+    print("🚀 Beautiful Crypto Dashboard Bot is running...")
     bot.polling(none_stop=True)
